@@ -10,23 +10,42 @@ jobs:
       HAS_ASC: ${{ secrets.ASC_KEY_ID != '' }}
     steps:
       - uses: actions/checkout@v4
+
       - name: Install XcodeGen
         run: brew install xcodegen
+
       - name: Generate Xcode project
+        working-directory: apple-watch-padel-remote
         env:
           DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
         run: xcodegen generate
 
       # Always runs: proves the code compiles (no Apple account needed)
       - name: Compile for simulator
+        working-directory: apple-watch-padel-remote
         run: |
           xcodebuild -project PadelWatch.xcodeproj -scheme PadelWatch \
             -sdk watchsimulator -destination 'generic/platform=watchOS Simulator' \
             CODE_SIGNING_ALLOWED=NO build | tail -n 30
 
-      # Only runs once you've added the Apple secrets (see README)
+      # Also packages the compiled app as a downloadable zip for Sideloading
+      - name: Package app for download
+        working-directory: apple-watch-padel-remote
+        run: |
+          mkdir -p build/Payload
+          cp -r $(find ~/Library/Developer/Xcode/DerivedData -name "PadelWatch.app" | head -n 1) build/Payload/
+          cd build && zip -r PadelWatch.zip Payload
+
+      - name: Upload compiled app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PadelWatch-App
+          path: apple-watch-padel-remote/build/PadelWatch.zip
+
+      # Only runs if you ever configure paid Apple TestFlight secrets
       - name: Archive & upload to TestFlight
         if: env.HAS_ASC == 'true'
+        working-directory: apple-watch-padel-remote
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
@@ -34,12 +53,12 @@ jobs:
           TEAM: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           mkdir -p ~/.appstoreconnect/private_keys
-          KEY=~/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8
+          KEY=~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
           echo "$ASC_KEY_P8" > "$KEY"
           AUTH="-allowProvisioningUpdates -authenticationKeyPath $KEY -authenticationKeyID $ASC_KEY_ID -authenticationKeyIssuerID $ASC_ISSUER_ID"
           xcodebuild -project PadelWatch.xcodeproj -scheme PadelWatch \
             -destination 'generic/platform=watchOS' -archivePath build/PadelWatch.xcarchive \
-            CURRENT_PROJECT_VERSION=${{ github.run_number }} DEVELOPMENT_TEAM=$TEAM $AUTH archive
+            -CURRENT_PROJECT_VERSION=${{ github.run_number }} DEVELOPMENT_TEAM=$TEAM $AUTH archive
           cat > ExportOptions.plist <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -51,4 +70,4 @@ jobs:
           </dict></plist>
           PLIST
           xcodebuild -exportArchive -archivePath build/PadelWatch.xcarchive \
-            -exportOptionsPlist ExportOptions.plist -exportPath build/export $AUTH
+            -exportOptionsPlist ExportOptions.plist $AUTH
