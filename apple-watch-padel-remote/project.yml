@@ -1,7 +1,8 @@
-name: PadelWatch
+name: PadelScore
 options:
   bundleIdPrefix: com.scorerecord
   deploymentTarget:
+    iOS: "16.0"
     watchOS: "9.0"
 settings:
   base:
@@ -9,17 +10,30 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.0"
 targets:
+  PadelCompanion:
+    type: application
+    platform: iOS
+    sources: [PadelCompanion]
+    dependencies:
+      - target: PadelWatch
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.scorerecord.padelcompanion
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Padel Score
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        CODE_SIGN_STYLE: Automatic
   PadelWatch:
     type: application
     platform: watchOS
     sources: [PadelWatch]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.scorerecord.padelwatch
+        PRODUCT_BUNDLE_IDENTIFIER: com.scorerecord.padelcompanion.watchkitapp
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Padel Score
         INFOPLIST_KEY_WKApplication: YES
-        INFOPLIST_KEY_WKWatchOnly: YES
+        INFOPLIST_KEY_WKCompanionAppBundleIdentifier: com.scorerecord.padelcompanion
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
