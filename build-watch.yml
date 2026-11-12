@@ -6,49 +6,36 @@ on:
 jobs:
   build:
     runs-on: macos-15
-    env:
-      HAS_ASC: ${{ secrets.ASC_KEY_ID != '' }}
     steps:
       - uses: actions/checkout@v4
+
       - name: Install XcodeGen
         run: brew install xcodegen
+
       - name: Generate Xcode project
-        env:
-          DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        working-directory: apple-watch-padel-remote
         run: xcodegen generate
 
-      # Always runs: proves the code compiles (no Apple account needed)
-      - name: Compile for simulator
+      - name: Build iPhone app with Watch app inside (real devices)
+        working-directory: apple-watch-padel-remote
         run: |
-          xcodebuild -project PadelWatch.xcodeproj -scheme PadelWatch \
-            -sdk watchsimulator -destination 'generic/platform=watchOS Simulator' \
-            CODE_SIGNING_ALLOWED=NO build | tail -n 30
+          xcodebuild -project PadelScore.xcodeproj -scheme PadelCompanion \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build/dd \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tail -n 40
 
-      # Only runs once you've added the Apple secrets (see README)
-      - name: Archive & upload to TestFlight
-        if: env.HAS_ASC == 'true'
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
-          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Package IPA for Sideloadly
+        working-directory: apple-watch-padel-remote
         run: |
-          mkdir -p ~/.appstoreconnect/private_keys
-          KEY=~/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8
-          echo "$ASC_KEY_P8" > "$KEY"
-          AUTH="-allowProvisioningUpdates -authenticationKeyPath $KEY -authenticationKeyID $ASC_KEY_ID -authenticationKeyIssuerID $ASC_ISSUER_ID"
-          xcodebuild -project PadelWatch.xcodeproj -scheme PadelWatch \
-            -destination 'generic/platform=watchOS' -archivePath build/PadelWatch.xcarchive \
-            CURRENT_PROJECT_VERSION=${{ github.run_number }} DEVELOPMENT_TEAM=$TEAM $AUTH archive
-          cat > ExportOptions.plist <<PLIST
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0"><dict>
-            <key>method</key><string>app-store-connect</string>
-            <key>destination</key><string>upload</string>
-            <key>teamID</key><string>$TEAM</string>
-            <key>signingStyle</key><string>automatic</string>
-          </dict></plist>
-          PLIST
-          xcodebuild -exportArchive -archivePath build/PadelWatch.xcarchive \
-            -exportOptionsPlist ExportOptions.plist -exportPath build/export $AUTH
+          mkdir -p build/Payload
+          cp -r build/dd/Build/Products/Release-iphoneos/PadelCompanion.app build/Payload/ 2>/dev/null || \
+          cp -r build/dd/Build/Products/Debug-iphoneos/PadelCompanion.app build/Payload/
+          ls build/Payload/PadelCompanion.app/Watch
+          cd build && zip -qr PadelScore.ipa Payload && ls -lh PadelScore.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: PadelScore-IPA
+          path: apple-watch-padel-remote/build/PadelScore.ipa
+
