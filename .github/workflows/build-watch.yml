@@ -16,19 +16,21 @@ jobs:
         working-directory: apple-watch-padel-remote
         run: xcodegen generate
 
-      - name: Build Watch app (real hardware)
+      - name: Build Watch app
         working-directory: apple-watch-padel-remote
         run: |
+          set -o pipefail
           xcodebuild -project PadelScore.xcodeproj -scheme PadelWatch \
-            -sdk watchos -destination 'generic/platform=watchOS' \
+            -sdk watchos -configuration Release -destination 'generic/platform=watchOS' \
             -derivedDataPath build/dd \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tail -n 25
 
-      - name: Build iPhone companion app (real hardware)
+      - name: Build iPhone companion app
         working-directory: apple-watch-padel-remote
         run: |
+          set -o pipefail
           xcodebuild -project PadelScore.xcodeproj -scheme PadelCompanion \
-            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -sdk iphoneos -configuration Release -destination 'generic/platform=iOS' \
             -derivedDataPath build/dd \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tail -n 25
 
@@ -36,16 +38,22 @@ jobs:
         working-directory: apple-watch-padel-remote
         run: |
           mkdir -p build/Payload
-          APP_PATH=$(find build/dd/Build/Products -maxdepth 3 -name "PadelCompanion.app" | head -n 1)
-          echo "Found companion app at: $APP_PATH"
-          cp -r "$APP_PATH" build/Payload/
           
+          # Find and copy iPhone app
+          IPHONE_APP=$(find build/dd/Build/Products -name "PadelCompanion.app" | head -n 1)
+          echo "iPhone App: $IPHONE_APP"
+          cp -R "$IPHONE_APP" build/Payload/
+          
+          # Find and copy Watch app into Watch subfolder
           mkdir -p build/Payload/PadelCompanion.app/Watch
-          WATCH_PATH=$(find build/dd/Build/Products -maxdepth 3 -name "PadelWatch.app" | head -n 1)
-          echo "Found watch app at: $WATCH_PATH"
-          if [ -n "$WATCH_PATH" ]; then
-            cp -r "$WATCH_PATH" build/Payload/PadelCompanion.app/Watch/
+          WATCH_APP=$(find build/dd/Build/Products -name "PadelWatch.app" | head -n 1)
+          echo "Watch App: $WATCH_APP"
+          if [ -n "$WATCH_APP" ]; then
+            cp -R "$WATCH_APP" build/Payload/PadelCompanion.app/Watch/
           fi
+          
+          # Verify files exist
+          ls -la build/Payload/PadelCompanion.app
           
           cd build && zip -qr PadelScore.ipa Payload
           ls -lh PadelScore.ipa
